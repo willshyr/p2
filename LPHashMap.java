@@ -96,7 +96,11 @@ public class LPHashMap<K, V> implements MapJHU<K, V>, Iterable<LPMapEntry<K, V>>
     }
 
     /* Methods from the MapJHU interface ---------------- */
-
+    /**
+     * Get the number of (actual) entries in the Map.
+     * 
+     * @return the size
+     */
     @Override
     public int size() {
         return this.n;
@@ -129,10 +133,13 @@ public class LPHashMap<K, V> implements MapJHU<K, V>, Iterable<LPMapEntry<K, V>>
     public boolean hasValue(V value) {
         return false;
     }
-    
-    /** Get the value associated with a key if there.
-     *  @param key the key being searched for
-     *  @return the value associated with key, or null if not found
+
+    /**
+     * Get the value associated with a key if there.
+     * 
+     * @param key
+     *            the key being searched for
+     * @return the value associated with key, or null if not found
      */
     @Override
     public V get(K key) {
@@ -176,17 +183,13 @@ public class LPHashMap<K, V> implements MapJHU<K, V>, Iterable<LPMapEntry<K, V>>
             return old;
         } else {
             if (this.table[j] == null) {
-                // System.out.println(this.table[j].isTombstone());
-                // if (this.table[j].isTombstone()) {
-                // this.tomb--;
-                // }
                 this.table[j] = new LPMapEntry<>(key, value);
-                n++;
+                this.n++;
                 return null;
             } else if (this.table[j].isTombstone()) {
                 this.table[j] = new LPMapEntry<>(key, value);
                 this.tomb--;
-                n++;
+                this.n++;
                 return null;
             }
             i = (i + 1) % this.cap;
@@ -197,7 +200,7 @@ public class LPHashMap<K, V> implements MapJHU<K, V>, Iterable<LPMapEntry<K, V>>
             while (i != j) {
                 if (this.table[j] == null) {
                     this.table[j] = new LPMapEntry<>(key, value);
-                    n++;
+                    this.n++;
                     return null;
                 } else if (this.table[j].isTombstone()) {
                     this.tomb--;
@@ -225,6 +228,7 @@ public class LPHashMap<K, V> implements MapJHU<K, V>, Iterable<LPMapEntry<K, V>>
             // if the value is null, then no key is found
             return null;
         } else {
+            this.tomb++;
             // make tombstone.
             // check if the current index j has the right key.
             int j = key.hashCode() % this.cap;
@@ -242,6 +246,13 @@ public class LPHashMap<K, V> implements MapJHU<K, V>, Iterable<LPMapEntry<K, V>>
                         this.table[j].makeTombstone();
                     }
                 }
+            }
+            /**
+             * rehash if the number of tombstones exceeds number of elements.
+             * 
+             */
+            if (this.tomb > this.n) {
+                this.rehash(this.cap * 2);
             }
             return value;
         }
@@ -294,6 +305,13 @@ public class LPHashMap<K, V> implements MapJHU<K, V>, Iterable<LPMapEntry<K, V>>
     /* ---------- from Iterable ---------- */
     @Override
     public Iterator<LPMapEntry<K, V>> iterator() {
+        // Iterator<LPMapEntry<K,V>> temp = new table.iterator();
+        ArrayList<LPMapEntry<K, V>> lst = new ArrayList<LPMapEntry<K, V>>();
+        for (int i = 0; i < this.n; i++) {
+            lst.add(table[i]);
+        }
+        HashMapIterator<LPMapEntry<K,V>> itr = lst.iterator();
+        
         return null;
     }
 
@@ -309,16 +327,36 @@ public class LPHashMap<K, V> implements MapJHU<K, V>, Iterable<LPMapEntry<K, V>>
     }
 
     public String toString() {
-        String  temp = "{ ";
+        String temp = "{ ";
         for (Map.Entry<K, V> e : this.entries()) {
             String key = e.getKey().toString();
             String value = e.getValue().toString();
             temp = temp + "{" + key + ", " + value + "} ";
         }
         temp = temp + "}";
-        return temp;        
+        return temp;
     }
 
     /* ----- insert the HashMapIterator inner class here ----- */
-    // private class HashMapIterator implements
+    private class HashMapIterator implements Iterator<LPMapEntry<K, V>> {
+
+        private int nextIndex = -1;
+
+        @Override
+        public boolean hasNext() {
+            return this.nextIndex < (n - 1);
+        }
+
+        @Override
+        public LPMapEntry<K, V> next() {
+            int index = ++this.nextIndex;
+            return table[index];
+        }
+
+        @Override
+        public void remove() {
+            table[this.nextIndex].makeTombstone();
+        }
+
+    }
 }
