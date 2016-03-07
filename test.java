@@ -1,12 +1,26 @@
-import java.util.Scanner;
-public class test{
-	public static void main(String[] args) { 
-		String input = "1 fish 2 fish red fish blue fish";
-		Scanner s = new Scanner(input).useDelimiter("\\s*fish\\s*");
-		System.out.println(s.nextInt()); // prints: 1
-		System.out.println(s.nextInt()); // prints: 2
-		System.out.println(s.next()); // prints: red
-		System.out.println(s.next()); // prints: blue
-		s.close();
-	}
+//import java.util.Scanner;
+public class test {
+    public static void main(String[] args) {
+        // LPMapEntry<Integer, String> entry = new LPMapEntry<>(7, "seven");
+        // entry.makeTombstone();
+        // System.out.println(entry == null);
+        Integer[] karray = { 1, 3, 4, 10, 12 };
+        String[] varray = { "one", "three", "four", "ten", "twelve" };
+        float maxlf = 0.5f;
+        System.out.println(maxlf);
+        // while (++j < 10);
+        // j = i;
+        // System.out.println(i);
+        LPHashMap<Integer, String> hm = new LPHashMap<Integer, String>(maxlf);
+        System.out.println(hm.getLoad());
+        System.out.println(hm.getMaxLoad());
+
+        for (int i = 0; i < karray.length; i++) {
+            hm.put(karray[i], varray[i]);
+        }
+        System.out.println(hm.get(3));
+        // System.out.println(hm.getClass().getName());
+        // System.out.println(hm.isEmpty());
+
+    }
 }
