@@ -2,6 +2,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.ConcurrentModificationException;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Spliterator;
@@ -16,15 +17,22 @@ import java.util.function.Consumer;
  * @param <V>
  *            the base type of the values
  */
-public class LPHashMap<K, V> implements MapJHU<K, V>, Iterable<LPMapEntry<K, V>> {
+public class LPHashMap<K, V> implements MapJHU<K, V>, 
+                                                Iterable<LPMapEntry<K, V>> {
 
     /* Custom methods --------------------------------- */
+    /** Max load factor. */
     private float maxlf;
-    // private float currlf;
+    /** Table for storing the entries. */
     private LPMapEntry<K, V>[] table;
-    private int cap;
+    /** Table capacity. */
+    private int capacity;
+    /** Number of entries in table. */
     private int n = 0; // size
+    /** Number of tombs. */
     private int tomb = 0;
+    /** Initial capacity. */
+    private final int initcap = 5;
 
     /**
      * Create an empty open addressing hash map implementation with capacity 5.
@@ -34,8 +42,8 @@ public class LPHashMap<K, V> implements MapJHU<K, V>, Iterable<LPMapEntry<K, V>>
      */
     public LPHashMap(float max) {
         this.maxlf = max;
-        this.cap = 5;
-        table = new LPMapEntry[this.cap];
+        this.capacity = this.initcap;
+        this.table = new LPMapEntry[this.capacity];
     }
 
     /**
@@ -53,7 +61,7 @@ public class LPHashMap<K, V> implements MapJHU<K, V>, Iterable<LPMapEntry<K, V>>
      * @return the load factor, should be 0 < lf <= 1
      */
     public float getLoad() {
-        return ((float) this.n / this.cap);
+        return ((float) this.n / this.capacity);
     }
 
     /**
@@ -62,7 +70,7 @@ public class LPHashMap<K, V> implements MapJHU<K, V>, Iterable<LPMapEntry<K, V>>
      * @return the capacity
      */
     public int getCapacity() {
-        return this.cap;
+        return this.capacity;
     }
 
     /**
@@ -72,16 +80,25 @@ public class LPHashMap<K, V> implements MapJHU<K, V>, Iterable<LPMapEntry<K, V>>
      *            the capacity of the table after rehashing, cap > size()
      */
     public void rehash(int cap) {
-        ArrayList<Map.Entry<K, V>> temp = new ArrayList<>(n);
-        for (Map.Entry<K, V> e : this.entries()) {
-            temp.add(e);
+        /**
+         * Use two arraylists for adding keys and values from table. Not using
+         * the values() and keys() methods because the sets result in out of
+         * order key-value pairs.
+         */
+        ArrayList<K> keys = new ArrayList<>();
+        ArrayList<V> values = new ArrayList<>();
+        for (LPMapEntry<K, V> e : this.table) {
+            if (e != null && !e.isTombstone()) {
+                keys.add(e.getKey());
+                values.add(e.getValue());
+            }
         }
-        // System.out.println(temp.get(0));
-        this.cap = cap;
-        this.table = new LPMapEntry[cap];
+        this.capacity = cap;
+        this.table = new LPMapEntry[this.capacity];
         this.n = 0;
-        for (Map.Entry<K, V> e : temp) {
-            this.put(e.getKey(), e.getValue());
+        this.tomb = 0;
+        for (int i = 0; i < keys.size(); i++) {
+            this.put(keys.get(i), values.get(i));
         }
     }
 
@@ -107,9 +124,9 @@ public class LPHashMap<K, V> implements MapJHU<K, V>, Iterable<LPMapEntry<K, V>>
     }
 
     @Override
-    public void clear() {
-        for (int i = 0; i < this.cap; i++) {
-            table[i] = null;
+    public void clear() throws ConcurrentModificationException {
+        for (int i = 0; i < this.capacity; i++) {
+            this.table[i] = null;
         }
         this.n = 0;
     }
@@ -122,15 +139,21 @@ public class LPHashMap<K, V> implements MapJHU<K, V>, Iterable<LPMapEntry<K, V>>
     @Override
     public boolean hasKey(K key) {
         V value = this.get(key);
-        if (value == null) {
-            return false;
-        } else {
-            return true;
-        }
+        // if (value == null) {
+        // return false;
+        // } else {
+        // return true;
+        // }
+        return (value != null);
     }
 
     @Override
     public boolean hasValue(V value) {
+        for (Map.Entry<K, V> e : this.entries()) {
+            if (e.getValue() == value) {
+                return true;
+            }
+        }
         return false;
     }
 
@@ -143,40 +166,45 @@ public class LPHashMap<K, V> implements MapJHU<K, V>, Iterable<LPMapEntry<K, V>>
      */
     @Override
     public V get(K key) {
-        int j = key.hashCode() % this.cap;
-        if (this.n == 0 || this.table[j] == null) {
+        // get index from hashcode
+        int i = key.hashCode() % this.capacity;
+        // if the hashmap is empty or if current element is null
+        // return null
+        if (this.n == 0 || this.table[i] == null) {
             return null;
         }
-        int i = j;
-        if (this.table[i].getKey().equals(key)) {
-            return table[i].getValue();
+        int j = i;
+        // if the current index has the key and if it is not a tombstone
+        // return value
+        if (this.table[j].getKey().equals(key) 
+                && !this.table[i].isTombstone()) {
+            return this.table[j].getValue();
         } else {
             // go through array until the right key is found
-            i = (i + 1) % this.cap;
-            while (i != j) {
-                System.out.println(i);
-                if (this.table[i] == null) {
+            j = (j + 1) % this.capacity;
+            while (j != i) {
+                if (this.table[j] == null) {
                     return null;
-                } else if (this.table[i].getKey().equals(key)) {
-                    return table[i].getValue();
+                } else if (this.table[j].getKey().equals(key) 
+                        && !this.table[j].isTombstone()) {
+                    // if isTombstone(), then doesn't return value
+                    return this.table[j].getValue();
                 }
-                i = (i + 1) % this.cap;
+                j = (j + 1) % this.capacity;
             }
         }
         return null;
     }
 
     @Override
-    public V put(K key, V value) {
+    public V put(K key, V value) throws ConcurrentModificationException {
         // check if the load factor is about to be bigger than maxlf
-        float futureLoad = this.getLoad() + (float) 1 / this.cap;
-        // System.out.println(futureLoad);
-        // System.out.println(futureLoad > this.maxlf);
+        float futureLoad = this.getLoad() + (float) 1 / this.capacity;
         if (futureLoad > this.maxlf) {
-            this.rehash(this.cap * 2);
+            this.rehash(this.capacity * 2 + 1);
         }
-        int j = key.hashCode() % this.cap;
-        int i = j;
+        int i = key.hashCode() % this.capacity;
+        int j = i;
         if (this.hasKey(key)) {
             V old = this.table[j].getValue();
             this.table[j].setValue(value);
@@ -192,12 +220,12 @@ public class LPHashMap<K, V> implements MapJHU<K, V>, Iterable<LPMapEntry<K, V>>
                 this.n++;
                 return null;
             }
-            i = (i + 1) % this.cap;
+            j = (j + 1) % this.capacity;
             /**
              * Use i to find the next available slot, either a tombstone or an
              * empty slot.
              */
-            while (i != j) {
+            while (j != i) {
                 if (this.table[j] == null) {
                     this.table[j] = new LPMapEntry<>(key, value);
                     this.n++;
@@ -208,7 +236,7 @@ public class LPHashMap<K, V> implements MapJHU<K, V>, Iterable<LPMapEntry<K, V>>
                     this.n++;
                     return null;
                 }
-                i = (i + 1) % this.cap;
+                j = (j + 1) % this.capacity;
             }
         }
         return null;
@@ -222,7 +250,7 @@ public class LPHashMap<K, V> implements MapJHU<K, V>, Iterable<LPMapEntry<K, V>>
      * @return the value associated with the key, or null if key not there
      */
     @Override
-    public V remove(K key) {
+    public V remove(K key) throws ConcurrentModificationException {
         V value = this.get(key);
         if (value == null) {
             // if the value is null, then no key is found
@@ -230,31 +258,41 @@ public class LPHashMap<K, V> implements MapJHU<K, V>, Iterable<LPMapEntry<K, V>>
         } else {
             this.tomb++;
             // make tombstone.
-            // check if the current index j has the right key.
-            int j = key.hashCode() % this.cap;
-            if (this.table[j].getKey().equals(key)) {
-                this.table[j].makeTombstone();
+            // check if the current index i has the right key.
+            int i = key.hashCode() % this.capacity;
+            if (this.table[i].getKey().equals(key)) {
+                this.table[i].makeTombstone();
+                this.n--;
+                this.tooManyTombstones();
+                return value;
             } else {
-                /**
-                 * if the current index j doesn't have the right key, keep
-                 * checking by linear probing until the right key is found.
-                 */
-                int i = j;
-                i = (i + 1) % this.cap;
-                while (++i != j) {
+                // if the current index i doesn't have the right key, keep
+                // checking by linear probing until the right key is found.
+                // return the value when found.
+                int j = i; // create new index j
+                j = (j + 1) % this.capacity; // cycle through index j
+                while (j != i) { // compare index j to index i
                     if (this.table[j].getKey().equals(key)) {
                         this.table[j].makeTombstone();
+                        this.n--;
+                        this.tooManyTombstones();
+                        return value;
                     }
+                    j = (j + 1) % this.capacity;
                 }
             }
-            /**
-             * rehash if the number of tombstones exceeds number of elements.
-             * 
-             */
-            if (this.tomb > this.n) {
-                this.rehash(this.cap * 2);
-            }
-            return value;
+
+        }
+        // if index j = i and after going through the table,
+        // no key is found, nothing is removed and return null
+        return null;
+    }
+    /** When num of tombstones > num of entries,
+     *  the hashmap is rehashed with the same capcity.
+     */
+    private void tooManyTombstones() {
+        if (this.tomb > (this.n)) {
+            this.rehash(this.capacity);
         }
     }
 
@@ -262,21 +300,25 @@ public class LPHashMap<K, V> implements MapJHU<K, V>, Iterable<LPMapEntry<K, V>>
     @Override
     public Set<Map.Entry<K, V>> entries() {
         HashSet<Map.Entry<K, V>> temp = new HashSet<Map.Entry<K, V>>(this.n);
-        for (LPMapEntry<K, V> e : table) {
-            if (e != null) {
+        for (LPMapEntry<K, V> e : this.table) {
+            if (e != null && !e.isTombstone()) {
                 temp.add(e);
             }
         }
-        // System.out.println(temp);
         return temp;
     }
 
+    /**
+     * Get a set of all the keys in the map.
+     * 
+     * @return the set
+     */
     // You may use HashSet within this method.
     @Override
     public Set<K> keys() {
         HashSet<K> temp = new HashSet<K>(this.n);
-        for (LPMapEntry<K, V> e : table) {
-            if (e != null) {
+        for (LPMapEntry<K, V> e : this.table) {
+            if (e != null && !e.isTombstone()) {
                 temp.add(e.getKey());
             }
         }
@@ -286,8 +328,8 @@ public class LPHashMap<K, V> implements MapJHU<K, V>, Iterable<LPMapEntry<K, V>>
     @Override
     public Collection<V> values() {
         ArrayList<V> temp = new ArrayList<V>();
-        for (LPMapEntry<K, V> e : table) {
-            if (e != null) {
+        for (LPMapEntry<K, V> e : this.table) {
+            if (e != null && !e.isTombstone()) {
                 temp.add(e.getValue());
             }
         }
@@ -305,14 +347,7 @@ public class LPHashMap<K, V> implements MapJHU<K, V>, Iterable<LPMapEntry<K, V>>
     /* ---------- from Iterable ---------- */
     @Override
     public Iterator<LPMapEntry<K, V>> iterator() {
-        // Iterator<LPMapEntry<K,V>> temp = new table.iterator();
-        ArrayList<LPMapEntry<K, V>> lst = new ArrayList<LPMapEntry<K, V>>();
-        for (int i = 0; i < this.n; i++) {
-            lst.add(table[i]);
-        }
-        HashMapIterator<LPMapEntry<K,V>> itr = lst.iterator();
-        
-        return null;
+        return new HashMapIterator();
     }
 
     @Override
@@ -326,36 +361,50 @@ public class LPHashMap<K, V> implements MapJHU<K, V>, Iterable<LPMapEntry<K, V>>
         return null;
     }
 
-    public String toString() {
-        String temp = "{ ";
-        for (Map.Entry<K, V> e : this.entries()) {
-            String key = e.getKey().toString();
-            String value = e.getValue().toString();
-            temp = temp + "{" + key + ", " + value + "} ";
-        }
-        temp = temp + "}";
-        return temp;
-    }
+    // public String toString() {
+    // String temp = "{ ";
+    // for (Map.Entry<K, V> e : this.entries()) {
+    // String key = e.getKey().toString();
+    // String value = e.getValue().toString();
+    // temp = temp + "{" + key + ", " + value + "} ";
+    // }
+    // temp = temp + "}";
+    // return temp;
+    // }
 
     /* ----- insert the HashMapIterator inner class here ----- */
-    private class HashMapIterator implements Iterator<LPMapEntry<K, V>> {
-
+    /** Inner Iterator class for iterating through hashmap.
+     * 
+     */
+    class HashMapIterator implements Iterator<LPMapEntry<K, V>> {
+        /** Index for iterator.
+         * 
+         */
         private int nextIndex = -1;
-
+        
         @Override
         public boolean hasNext() {
-            return this.nextIndex < (n - 1);
+            return this.nextIndex < (LPHashMap.this.capacity - 1);
         }
 
         @Override
         public LPMapEntry<K, V> next() {
             int index = ++this.nextIndex;
-            return table[index];
+            // if (table[index] == null) {
+            // return null;
+            // } else {
+            // return table[index];
+            // }
+            return LPHashMap.this.table[index];
         }
 
         @Override
         public void remove() {
-            table[this.nextIndex].makeTombstone();
+            if (LPHashMap.this.table[this.nextIndex] != null 
+                    && !LPHashMap.this.table[this.nextIndex].isTombstone()) {
+                LPHashMap.this.n--;
+                LPHashMap.this.table[this.nextIndex].makeTombstone();
+            }
         }
 
     }
