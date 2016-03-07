@@ -129,7 +129,11 @@ public class LPHashMap<K, V> implements MapJHU<K, V>, Iterable<LPMapEntry<K, V>>
     public boolean hasValue(V value) {
         return false;
     }
-
+    
+    /** Get the value associated with a key if there.
+     *  @param key the key being searched for
+     *  @return the value associated with key, or null if not found
+     */
     @Override
     public V get(K key) {
         int j = key.hashCode() % this.cap;
@@ -143,7 +147,10 @@ public class LPHashMap<K, V> implements MapJHU<K, V>, Iterable<LPMapEntry<K, V>>
             // go through array until the right key is found
             i = (i + 1) % this.cap;
             while (i != j) {
-                if (this.table[i].getKey().equals(key)) {
+                System.out.println(i);
+                if (this.table[i] == null) {
+                    return null;
+                } else if (this.table[i].getKey().equals(key)) {
                     return table[i].getValue();
                 }
                 i = (i + 1) % this.cap;
